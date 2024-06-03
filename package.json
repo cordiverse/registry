@@ -1,0 +1,20 @@
+{
+  "name": "@root/cordis-registry",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "bundle": "node --import tsx --import yml-register packages/scripts/src/bundle.ts",
+    "sync": "node --import tsx --import yml-register packages/scripts/src/sync.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "esbuild": "^0.18.20",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.3",
+    "yml-register": "^1.2.5"
+  }
+}
