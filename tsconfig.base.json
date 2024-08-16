@@ -3,10 +3,10 @@
     "target": "esnext",
     "module": "esnext",
     "composite": true,
-    "noEmit": true,
+    "emitDeclarationOnly": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "moduleResolution": "bundler",
+    "moduleResolution": "nodenext",
     "strictBindCallApply": true,
   },
 }

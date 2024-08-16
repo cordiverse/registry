@@ -3,6 +3,9 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@cordisjs/registry": [
+        "packages/core/src",
+      ],
       "@cordisjs/registry-*": [
         "packages/*/src",
       ],
