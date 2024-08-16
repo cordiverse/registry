@@ -3,8 +3,8 @@ import { dirname, join } from 'node:path'
 import { createRequire } from 'node:module'
 import { Dirent } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
-import { DependencyKey, PackageJson, SearchObject, SearchResult } from './types'
-import { Ecosystem, Manifest } from './manifest'
+import { DependencyKey, PackageJson, SearchObject, SearchResult } from './types.ts'
+import { Ecosystem, Manifest } from './manifest.ts'
 import glob from 'fast-glob'
 
 type PnP = typeof import('pnpapi')
@@ -207,6 +207,7 @@ export class LocalScanner {
       const exports = manifest.exports ?? {}
       if (exports['.'] !== null) {
         this.pkgTasks[name] ||= this.loadPackage(name, path, {
+          ecosystem: ecosystem.name,
           shortname,
           workspace,
           manifest,
@@ -217,6 +218,7 @@ export class LocalScanner {
         if (!manifest) continue
         const fullname = join(name, path)
         this.pkgTasks[fullname] ||= this.loadPackage(fullname, path, {
+          ecosystem: ecosystem.name,
           shortname: join(shortname, path),
           workspace,
           manifest,

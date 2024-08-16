@@ -1,12 +1,13 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "module": "esnext",
+    "module": "nodenext",
     "composite": true,
     "emitDeclarationOnly": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "moduleResolution": "nodenext",
     "strictBindCallApply": true,
+    "allowImportingTsExtensions": true,
   },
 }

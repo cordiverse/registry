@@ -1,5 +1,5 @@
 import { Dict } from 'cosmokit'
-import { Manifest } from './manifest'
+import { Manifest } from './manifest.ts'
 
 export interface User {
   name?: string

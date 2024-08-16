@@ -1,12 +1,17 @@
 {
-  "name": "@cordiverse/registry-scripts",
+  "name": "@cordisjs/registry-cli",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "bin": {
+    "cordis-registry": "./lib/cli.js"
+  },
   "license": "MIT",
   "devDependencies": {
     "@types/babel__code-frame": "^7.0.6",
-    "@types/yargs-parser": "^21.0.3"
+    "@types/node": "^22.1.0",
+    "@types/yargs-parser": "^21.0.3",
+    "typescript": "^5.5.3"
   },
   "dependencies": {
     "@babel/code-frame": "^7.24.2",

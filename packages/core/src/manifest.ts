@@ -1,5 +1,5 @@
 import { Dict } from 'cosmokit'
-import { PackageJson } from './types'
+import { PackageJson } from './types.ts'
 
 interface Ensure<T> {
   (value: any): T | undefined

@@ -1,6 +1,6 @@
 import { Awaitable, Dict, Time } from 'cosmokit'
-import { Registry, RemotePackage, SearchObject, SearchResult } from './types'
-import { Ecosystem, Manifest } from './manifest'
+import { Registry, RemotePackage, SearchObject, SearchResult } from './types.ts'
+import { Ecosystem, Manifest } from './manifest.ts'
 import { compare } from 'semver'
 import pMap from 'p-map'
 
