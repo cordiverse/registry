@@ -2,32 +2,23 @@ import { Awaitable, Dict, Time } from 'cosmokit'
 import { Registry, RemotePackage, SearchObject, SearchResult } from './types.ts'
 import { Ecosystem, Manifest } from './manifest.ts'
 import { compare } from 'semver'
-import pMap from 'p-map'
+import PQueue from 'p-queue'
 
 export interface RemoteScanner extends SearchResult {}
 
 export namespace RemoteScanner {
   export interface Options {
     registry: string
-    onPackage?(registry: Registry, versions: RemotePackage[]): boolean
-    onEcosystem?(name: string): boolean
     request?<T>(url: URL, config?: RequestConfig): Promise<T>
-    onFailure?(name: string, reason: any): Awaitable<void>
+    onFailure?(object: SearchObject, reason: any): Awaitable<void>
     onSuccess?(object: SearchObject, versions: RemotePackage[]): Awaitable<void>
+    onSkipped?(object: SearchObject): Awaitable<void>
   }
 
   export interface CollectOptions {
     step?: number
     margin?: number
     timeout?: number
-  }
-
-  export interface AnalyzeConfig {
-    concurrency?: number
-    before?(object: SearchObject): void
-    onRegistry?(registry: Registry, versions: RemotePackage[]): Awaitable<void>
-    onSkipped?(name: string): Awaitable<void>
-    after?(object: SearchObject): void
   }
 }
 
@@ -42,8 +33,9 @@ export interface RequestConfig {
 // }
 
 export class RemoteScanner {
-  ecosystems: Ecosystem[] = []
+  tasks: Promise<void>[] = []
   cache: Dict<Dict<SearchObject>> = Object.create(null)
+  private queue = new PQueue({ concurrency: 10 })
 
   constructor(public options: RemoteScanner.Options) {}
 
@@ -79,72 +71,63 @@ export class RemoteScanner {
     return Object.values(cache)
   }
 
-  public async collect(config: RemoteScanner.CollectOptions = {}) {
-    this.time = new Date().toUTCString()
-    this.ecosystems.push({
-      name: 'cordis',
-      property: 'cordis',
-      inject: [],
-      pattern: ['cordis-plugin-*', '@cordisjs/plugin-*'],
-      keywords: ['cordis', 'plugin'],
-    })
-    while (this.ecosystems.length) {
-      const eco = this.ecosystems.shift()!
-      await this.search(eco)
-      // await this.analyze(eco)
-    }
-  }
-
-  public async process(eco: string, object: SearchObject, options: RemoteScanner.AnalyzeConfig) {
-    const registry = await this.request<Registry>(`/${object.package.name}`)
-    const compatible = Object.values(registry.versions).sort((a, b) => compare(b.version, a.version))
-
-    await this.options.onPackage?.(registry, compatible)
-    const versions = compatible.filter(item => !item.deprecated)
-    if (!versions.length) return
-
-    const latest = registry.versions[versions[0].version]
-    const shortname = Ecosystem.check(this.ecosystems[eco], latest)
-    if (!shortname) return
-
-    const manifest = Manifest.conclude(latest, this.ecosystems[eco].property)
-    const times = compatible.map(item => registry.time[item.version]).sort()
-
-    object.ecosystem = eco
-    object.shortname = shortname
-    object.manifest = manifest
-    object.insecure = manifest.insecure
-    object.category = manifest.category
-    object.createdAt = times[0]
-    object.updatedAt = times[times.length - 1]
-    object.package.contributors ??= latest.author ? [latest.author] : []
-    object.package.keywords = latest.keywords ?? []
-    return versions
-  }
-
-  public async analyze(eco: string, config: RemoteScanner.AnalyzeConfig) {
-    const { concurrency = 5, before, onSkipped, after } = config
-
-    const result = await pMap(this.objects, async (object) => {
+  async loadEcosystem(eco: Ecosystem) {
+    const objects = await this.search(eco)
+    await Promise.all(objects.map(async (object) => {
       if (object.ignored) return
-      before?.(object)
       try {
-        const versions = await this.process(eco, object, config)
+        const versions = await this.loadPackage(eco, object)
         if (versions) {
           await this.options.onSuccess?.(object, versions)
           return versions
         } else {
           object.ignored = true
-          await onSkipped?.(object.package.name)
+          await this.options.onSkipped?.(object)
         }
       } catch (error) {
         object.ignored = true
-        await this.options.onFailure?.(object.package.name, error)
-      } finally {
-        after?.(object)
+        await this.options.onFailure?.(object, error)
       }
-    }, { concurrency })
+    }))
+  }
 
-    return result.filter(<T>(x: T): x is T & {} => !!x)
+  public async collect() {
+    this.time = new Date().toUTCString()
+    this.tasks.push(this.loadEcosystem(Ecosystem.INIT))
+    while (this.tasks.length) {
+      await Promise.all(this.tasks.splice(0))
+    }
+  }
+
+  public async loadPackage(eco: Ecosystem, object: SearchObject) {
+    const registry = await this.queue.add(() => this.request<Registry>(`/${object.package.name}`), { throwOnTimeout: true })
+    const versions = Object.values(registry.versions).sort((a, b) => compare(b.version, a.version))
+
+    const activeVersions = versions.filter(item => !item.deprecated)
+    if (!activeVersions.length) return
+
+    const latest = activeVersions[0]
+    const shortname = Ecosystem.check(eco, latest)
+    if (!shortname) return
+
+    object.ecosystem = eco.name
+    object.shortname = shortname
+    object.package.contributors ??= latest.author ? [latest.author] : []
+    object.package.keywords = latest.keywords ?? []
+
+    const manifest = Manifest.conclude(latest, eco.property)
+    object.manifest = manifest
+    object.insecure = manifest.insecure
+    object.category = manifest.category
+
+    if (manifest.ecosystem) {
+      this.tasks.push(this.loadEcosystem(Ecosystem.resolve(registry.name, manifest)))
+    }
+
+    const times = versions.map(item => registry.time[item.version]).sort()
+    object.createdAt = times[0]
+    object.updatedAt = times[times.length - 1]
+
+    return versions
   }
 }

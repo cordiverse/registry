@@ -90,13 +90,7 @@ export class LocalScanner {
     }
 
     // check for candidates
-    this.ecosystems.push({
-      name: 'cordis',
-      property: 'cordis',
-      inject: [],
-      pattern: ['cordis-plugin-*', '@cordisjs/plugin-*'],
-      keywords: ['cordis', 'plugin'],
-    })
+    this.ecosystems.push(Ecosystem.INIT)
     while (this.ecosystems.length) {
       const ecosystem = this.ecosystems.shift()!
       this.loadEcosystem(ecosystem)
@@ -229,13 +223,7 @@ export class LocalScanner {
         })
       }
       if (!manifest.ecosystem) continue
-      this.ecosystems.push({
-        name,
-        property: manifest.ecosystem.property || 'cordis',
-        inject: manifest.service?.implements || [],
-        pattern: manifest.ecosystem.pattern || [`${name}-plugin-*`],
-        keywords: manifest.ecosystem.keywords || [name, 'plugin'],
-      })
+      this.ecosystems.push(Ecosystem.resolve(name, manifest))
     }
   }
 

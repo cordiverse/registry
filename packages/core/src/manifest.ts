@@ -60,6 +60,22 @@ export namespace Ecosystem {
     }
     if (ecosystem.property in meta) return meta.name
   }
+
+  export function resolve(name: string, manifest: Manifest): Ecosystem {
+    return {
+      name,
+      property: manifest.ecosystem!.property || 'cordis',
+      inject: manifest.service?.implements || [],
+      pattern: manifest.ecosystem!.pattern || [`${name}-plugin-*`],
+      keywords: manifest.ecosystem!.keywords || [name],
+    }
+  }
+
+  export const INIT = resolve('cordis', {
+    ecosystem: {
+      pattern: ['cordis-plugin-*', '@cordisjs/plugin-*'],
+    },
+  })
 }
 
 function concludeExport(base?: Manifest.Export | null, description?: string) {
