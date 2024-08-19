@@ -90,7 +90,6 @@ export interface SearchPackage extends DatedPackage, Pick<RemotePackage, Depende
 
 export interface SearchObject {
   shortname: string
-  ecosystem?: string
   package: SearchPackage
   searchScore: number
   score: Score

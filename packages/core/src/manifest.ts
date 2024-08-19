@@ -62,12 +62,13 @@ export namespace Ecosystem {
   }
 
   export function resolve(name: string, manifest: Manifest): Ecosystem {
+    const shortname = manifest.ecosystem!.name || name
     return {
       name,
       property: manifest.ecosystem!.property || 'cordis',
       inject: manifest.service?.implements || [],
-      pattern: manifest.ecosystem!.pattern || [`${name}-plugin-*`],
-      keywords: manifest.ecosystem!.keywords || [name],
+      pattern: manifest.ecosystem!.pattern || [`${shortname}-plugin-*`],
+      keywords: manifest.ecosystem!.keywords || [shortname],
     }
   }
 
@@ -137,6 +138,7 @@ export namespace Manifest {
     category: Ensure.string(meta[prop]?.category),
     public: Ensure.array(meta[prop]?.public),
     ecosystem: Ensure.object(meta[prop]?.ecosystem, (ecosystem) => ({
+      name: Ensure.string(ecosystem.name),
       property: Ensure.string(ecosystem.property),
       inject: Ensure.array(ecosystem.inject),
       pattern: Ensure.array(ecosystem.pattern),

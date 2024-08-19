@@ -110,7 +110,6 @@ export class RemoteScanner {
     const shortname = Ecosystem.check(eco, latest)
     if (!shortname) return
 
-    object.ecosystem = eco.name
     object.shortname = shortname
     object.package.contributors ??= latest.author ? [latest.author] : []
     object.package.keywords = latest.keywords ?? []

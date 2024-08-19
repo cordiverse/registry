@@ -25,7 +25,7 @@ declare module 'pnpapi' {
 const LocalKey = ['name', 'version'] as const
 type LocalKeys = typeof LocalKey[number]
 
-interface LocalObject extends Pick<SearchObject, 'shortname' | 'ecosystem' | 'workspace' | 'manifest'> {
+interface LocalObject extends Pick<SearchObject, 'shortname' | 'workspace' | 'manifest'> {
   package: Pick<PackageJson, LocalKeys>
   readme?: Dict<string | null>
   _readmeFiles?: Dict<string | Promise<string>>
@@ -192,16 +192,15 @@ export class LocalScanner {
     return meta
   }
 
-  private loadEcosystem(ecosystem: Ecosystem) {
+  private loadEcosystem(eco: Ecosystem) {
     for (const [name, { path, meta, workspace }] of Object.entries(this.candidates)) {
-      const shortname = Ecosystem.check(ecosystem, meta)
+      const shortname = Ecosystem.check(eco, meta)
       if (!shortname) continue
       delete this.candidates[name]
-      const manifest = Manifest.conclude(meta, ecosystem.property)
+      const manifest = Manifest.conclude(meta, eco.property)
       const exports = manifest.exports ?? {}
       if (exports['.'] !== null) {
         this.pkgTasks[name] ||= this.loadPackage(name, path, {
-          ecosystem: ecosystem.name,
           shortname,
           workspace,
           manifest,
@@ -212,7 +211,6 @@ export class LocalScanner {
         if (!manifest) continue
         const fullname = join(name, path)
         this.pkgTasks[fullname] ||= this.loadPackage(fullname, path, {
-          ecosystem: ecosystem.name,
           shortname: join(shortname, path),
           workspace,
           manifest,
