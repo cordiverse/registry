@@ -69,6 +69,7 @@ export interface Registry extends BasePackage {
   license: string
   readme: string
   readmeFilename: string
+  'dist-tags': Dict<string>
 }
 
 export interface DatedPackage extends BasePackage {
@@ -99,7 +100,6 @@ export interface SearchObject {
   category?: string
   portable?: boolean
   insecure?: boolean
-  ignored?: boolean
   license: string
   manifest: Manifest
   createdAt: string
@@ -128,6 +128,5 @@ export interface SearchResult<T = SearchObject> {
   total: number
   time: string
   objects: T[]
-  version?: number
   forceTime?: number
 }
