@@ -3,6 +3,7 @@ import { Awaitable, Dict, Time } from 'cosmokit'
 import { Registry, RemotePackage, SearchObject, SearchResult } from './types.ts'
 import { Ecosystem, Manifest } from './manifest.ts'
 import { compare } from 'semver'
+import getRegistry from 'get-registry'
 import PQueue from 'p-queue'
 
 export interface RemoteScanner extends SearchResult {}
@@ -11,8 +12,9 @@ export namespace RemoteScanner {
   export interface Options {
     cacheDir?: string
     collect?: CollectOptions
-    registry: string
+    registry?: string
     request?<T>(url: URL, config?: RequestConfig): Promise<T>
+    onRegistry?(object: SearchObject, registry: Registry, latest?: RemotePackage): void
     onFailure?(object: SearchObject, reason: any): Awaitable<void>
     onSuccess?(object: SearchObject, versions?: RemotePackage[]): Awaitable<void>
     onSkipped?(object: SearchObject): Awaitable<void>
@@ -38,9 +40,10 @@ interface SearchCache {
 }
 
 export class RemoteScanner {
+  private registry!: string
   private ecoTasks: Promise<void>[] = []
   private requestQueue = new PQueue({ concurrency: 10 })
-  private searchCache: SearchCache = Object.create(null)
+  private searchCache!: SearchCache
   private legacyResult: SearchResult = {
     total: 0,
     objects: [],
@@ -50,7 +53,7 @@ export class RemoteScanner {
   constructor(public options: RemoteScanner.Options) {}
 
   async request<T>(path: string, config?: RequestConfig) {
-    const url = new URL(path, this.options.registry)
+    const url = new URL(path, this.registry)
     if (this.options.request) {
       return this.options.request<T>(url, config)
     }
@@ -107,11 +110,17 @@ export class RemoteScanner {
   }
 
   async _initCache() {
+    this.registry = this.options.registry || await getRegistry()
+    this.searchCache = {
+      version,
+      registry: this.registry,
+      packages: Object.create(null),
+    }
     if (!this.options.cacheDir) return
     try {
       const cache: SearchCache = JSON.parse(await readFile(this.options.cacheDir + '/cache.json', 'utf8'))
       const legacy: SearchResult = JSON.parse(await readFile(this.options.cacheDir + '/index.json', 'utf8'))
-      if (cache.version !== version || cache.registry !== this.options.registry) return
+      if (cache.version !== version || cache.registry !== this.registry) return
       Object.setPrototypeOf(cache.packages, null)
       this.searchCache = cache
       this.legacyResult = legacy
@@ -129,13 +138,14 @@ export class RemoteScanner {
 
   public async loadPackage(eco: Ecosystem, object: SearchObject) {
     const registry = await this.requestQueue.add(() => {
-      return this.request<Registry>(`/${name}`)
+      return this.request<Registry>(`/${object.package.name}`)
     }, { throwOnTimeout: true })
     const versions = Object.values(registry.versions).sort((a, b) => compare(b.version, a.version))
 
     const latestVersion = registry['dist-tags']['latest']
     if (!latestVersion) return
     const latest = registry.versions[latestVersion]
+    this.options.onRegistry?.(object, registry, latest?.deprecated ? undefined : latest)
     if (!latest || latest.deprecated) return
 
     const shortname = Ecosystem.check(eco, latest)

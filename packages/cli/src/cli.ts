@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module'
 import { LocalScanner, RemoteScanner } from '@cordisjs/registry'
 import { cac } from 'cac'
+import { resolve } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const { version } = require('../package.json')
@@ -8,8 +9,10 @@ const { version } = require('../package.json')
 const cli = cac('cordis-registry').help().version(version)
 
 cli.command('local', 'Scan local packages')
-  .action(async () => {
-    const scanner = new LocalScanner(process.cwd(), {
+  .option('--cwd <name>', 'Current working directory')
+  .action(async (options) => {
+    const baseDir = resolve(process.cwd(), options.cwd ?? '.')
+    const scanner = new LocalScanner(baseDir, {
       onSuccess: async ({ package: { name, version } }) => {
         console.log(`${name}@${version}`)
       },
@@ -18,11 +21,13 @@ cli.command('local', 'Scan local packages')
   })
 
 cli.command('remote', 'Scan remote packages')
-  .action(async () => {
+  .option('--cache-dir <name>', 'Cache directory')
+  .action(async (options) => {
     const scanner = new RemoteScanner({
+      cacheDir: options.cacheDir ? resolve(process.cwd(), options.cacheDir) : undefined,
       registry: 'https://registry.npmmirror.com',
-      onSuccess: async ({ package: { name, version }, ecosystem }) => {
-        console.log(`[${ecosystem}] ${name}@${version}`)
+      onSuccess: async ({ package: { name, version } }) => {
+        console.log(`${name}@${version}`)
       },
     })
     await scanner.collect().catch(console.error)
