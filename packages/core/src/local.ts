@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { createRequire } from 'node:module'
 import { Dirent } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
-import { DependencyKey, PackageJson, SearchObject, SearchResult } from './types.ts'
+import { PackageJson, SearchObject } from './types.ts'
 import { Ecosystem, Manifest } from './manifest.ts'
 import glob from 'fast-glob'
 
@@ -25,13 +25,13 @@ declare module 'pnpapi' {
 const LocalKey = ['name', 'version'] as const
 type LocalKeys = typeof LocalKey[number]
 
-interface LocalObject extends Pick<SearchObject, 'shortname' | 'workspace' | 'manifest'> {
+export interface LocalObject extends Pick<SearchObject, 'shortname' | 'workspace' | 'manifest'> {
   package: Pick<PackageJson, LocalKeys>
   readme?: Dict<string | null>
   _readmeFiles?: Dict<string | Promise<string>>
 }
 
-export interface LocalScanner extends SearchResult<LocalObject>, LocalScanner.Options {}
+export interface LocalScanner extends LocalScanner.Options {}
 
 export namespace LocalScanner {
   export interface Options {
@@ -40,25 +40,29 @@ export namespace LocalScanner {
   }
 }
 
-function clear(object: Dict) {
-  for (const key of Object.keys(object)) {
-    delete object[key]
-  }
+interface Locator {
+  request?: string
+  path: string
+  workspace: boolean
 }
 
-interface Candidate {
-  path: string
+interface Candidate extends Locator {
   meta: PackageJson
-  workspace: boolean
+}
+
+export interface Dependency extends Partial<Candidate> {
+  request: string
 }
 
 export class LocalScanner {
   public cache: Dict<LocalObject> = Object.create(null)
+  public dependencies: Dict<Dependency> = Object.create(null)
+  public ecosystems: Ecosystem[] = []
 
-  private ecosystems: Ecosystem[] = []
   private candidates: Dict<Candidate> = Object.create(null)
-  private dependencies: Dict<string> = Object.create(null)
+  private metaDeps: Dict<string> = Object.create(null)
   private pkgTasks: Dict<Promise<LocalObject | undefined>> = Object.create(null)
+  private scanTask?: Promise<Dict<Dependency>>
   private mainTask?: Promise<LocalObject[]>
   private require!: NodeRequire
 
@@ -67,20 +71,14 @@ export class LocalScanner {
     Object.assign(this, options)
   }
 
-  async collect(forced = false) {
-    if (forced) delete this.mainTask
-    this.objects = await (this.mainTask ||= this._collect())
+  async scan() {
+    return (this.scanTask ||= this._scan())
   }
 
-  async _collect() {
-    clear(this.cache)
-    clear(this.pkgTasks)
-    clear(this.candidates)
-    clear(this.dependencies)
-    this.ecosystems.splice(0)
+  private async _scan() {
     const meta = JSON.parse(await readFile(this.baseDir + '/package.json', 'utf8')) as PackageJson
-    for (const key of DependencyKey) {
-      Object.assign(this.dependencies, meta[key])
+    for (const key of ['dependencies']) {
+      Object.assign(this.metaDeps, meta[key])
     }
 
     if (pnp) {
@@ -88,6 +86,18 @@ export class LocalScanner {
     } else {
       await this.loadNodeModules()
     }
+
+    return Object.fromEntries(Object.entries(this.metaDeps).map(([name, request]) => {
+      return [name, { request, ...this.candidates[name] }]
+    }))
+  }
+
+  async collect() {
+    return (this.mainTask ||= this._collect())
+  }
+
+  private async _collect() {
+    await this.scan()
 
     // check for candidates
     this.ecosystems.push(Ecosystem.INIT)
@@ -101,32 +111,37 @@ export class LocalScanner {
   }
 
   async loadPlugAndPlay(pnp: PnP) {
-    const locators: Dict<[string, boolean]> = Object.create(null)
+    const locators: Dict<Locator> = Object.create(null)
 
     // workspaces
     if (pnp.getDependencyTreeRoots) {
       for (const locator of pnp.getDependencyTreeRoots()) {
         if (!locator.name) continue
         const info = pnp.getPackageInformation(locator)
-        locators[locator.name] = [info.packageLocation, true]
+        locators[locator.name] = {
+          path: info.packageLocation,
+          workspace: true,
+          request: this.metaDeps[locator.name],
+        }
       }
     }
 
     // dependencies
-    for (const name in this.dependencies) {
+    for (const name in this.metaDeps) {
       if (name in locators) continue
       const path = pnp.resolveToUnqualified(name, this.baseDir)
       if (!path) continue
-      locators[name] = [path, false]
+      locators[name] = {
+        path,
+        workspace: false,
+        request: this.metaDeps[name],
+      }
     }
 
-    await Promise.all(Object.entries(locators).map(async ([name, [path, workspace]]) => {
+    await Promise.all(Object.entries(locators).map(async ([name, locator]) => {
       try {
-        this.candidates[name] = {
-          path,
-          meta: await this.loadMeta(join(path, 'package.json')),
-          workspace,
-        }
+        const meta = await this.loadMeta(join(locator.path, 'package.json'))
+        this.candidates[name] = { ...locator, meta }
       } catch (reason) {
         this.onFailure?.(reason, name)
       }
@@ -152,6 +167,7 @@ export class LocalScanner {
           path: dirname(filename),
           meta: await this.loadMeta(filename),
           workspace,
+          request: this.metaDeps[name],
         }
       } catch (reason) {
         this.onFailure?.(reason, name)
@@ -173,12 +189,12 @@ export class LocalScanner {
         return Promise.all(dirents.map(async (inner) => {
           const name = outer.name + '/' + inner.name
           const isLink = inner.isSymbolicLink()
-          const isDep = !!this.dependencies[name]
+          const isDep = !!this.metaDeps[name]
           if (isLink || isDep) return name
         }))
       } else {
         const isLink = outer.isSymbolicLink()
-        const isDep = !!this.dependencies[outer.name]
+        const isDep = !!this.metaDeps[outer.name]
         if (isLink || isDep) return outer.name
       }
     }))
@@ -196,7 +212,8 @@ export class LocalScanner {
     for (const [name, { path, meta, workspace }] of Object.entries(this.candidates)) {
       const shortname = Ecosystem.check(eco, meta)
       if (!shortname) continue
-      delete this.candidates[name]
+      // TODO: check for conflicts
+      // delete this.candidates[name]
       const manifest = Manifest.conclude(meta, eco.property)
       const exports = manifest.exports ?? {}
       if (exports['.'] !== null) {
@@ -243,9 +260,5 @@ export class LocalScanner {
     } catch (error) {
       this.onFailure?.(error, name)
     }
-  }
-
-  toJSON(): SearchResult<LocalObject> {
-    return pick(this, ['total', 'time', 'objects'])
   }
 }

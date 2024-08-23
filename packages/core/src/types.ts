@@ -128,5 +128,4 @@ export interface SearchResult<T = SearchObject> {
   total: number
   time: string
   objects: T[]
-  forceTime?: number
 }

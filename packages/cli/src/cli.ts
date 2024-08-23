@@ -25,7 +25,6 @@ cli.command('remote', 'Scan remote packages')
   .action(async (options) => {
     const scanner = new RemoteScanner({
       cacheDir: options.cacheDir ? resolve(process.cwd(), options.cacheDir) : undefined,
-      registry: 'https://registry.npmmirror.com',
       onSuccess: async ({ package: { name, version } }) => {
         console.log(`${name}@${version}`)
       },
