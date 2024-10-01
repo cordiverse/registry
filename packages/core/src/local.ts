@@ -47,10 +47,11 @@ interface Locator {
 }
 
 interface Candidate extends Locator {
-  meta: PackageJson
+  package: PackageJson
 }
 
 export interface Dependency extends Partial<Candidate> {
+  name: string
   request: string
 }
 
@@ -62,9 +63,9 @@ export class LocalScanner {
   private candidates: Dict<Candidate> = Object.create(null)
   private metaDeps: Dict<string> = Object.create(null)
   private pkgTasks: Dict<Promise<LocalObject | undefined>> = Object.create(null)
-  private scanTask?: Promise<Dict<Dependency>>
+  private scanTask?: Promise<Dependency[]>
   private mainTask?: Promise<LocalObject[]>
-  private require!: NodeRequire
+  private require: NodeRequire
 
   constructor(public baseDir: string, options: LocalScanner.Options = {}) {
     this.require = createRequire(baseDir + '/package.json')
@@ -87,9 +88,9 @@ export class LocalScanner {
       await this.loadNodeModules()
     }
 
-    return Object.fromEntries(Object.entries(this.metaDeps).map(([name, request]) => {
-      return [name, { request, ...this.candidates[name] }]
-    }))
+    return Object.entries(this.metaDeps).map<Dependency>(([name, request]) => {
+      return { name, request, ...this.candidates[name] }
+    })
   }
 
   async collect() {
@@ -141,7 +142,7 @@ export class LocalScanner {
     await Promise.all(Object.entries(locators).map(async ([name, locator]) => {
       try {
         const meta = await this.loadMeta(join(locator.path, 'package.json'))
-        this.candidates[name] = { ...locator, meta }
+        this.candidates[name] = { ...locator, package: meta }
       } catch (reason) {
         this.onFailure?.(reason, name)
       }
@@ -165,7 +166,7 @@ export class LocalScanner {
         const workspace = !filename.includes('node_modules')
         return {
           path: dirname(filename),
-          meta: await this.loadMeta(filename),
+          package: await this.loadMeta(filename),
           workspace,
           request: this.metaDeps[name],
         }
@@ -175,7 +176,7 @@ export class LocalScanner {
     }))
     for (const result of results) {
       if (!result) continue
-      this.candidates[result.meta.name] = result
+      this.candidates[result.package.name] = result
     }
   }
 
@@ -209,7 +210,7 @@ export class LocalScanner {
   }
 
   private loadEcosystem(eco: Ecosystem) {
-    for (const [name, { path, meta, workspace }] of Object.entries(this.candidates)) {
+    for (const [name, { path, package: meta, workspace }] of Object.entries(this.candidates)) {
       const shortname = Ecosystem.check(eco, meta)
       if (!shortname) continue
       // TODO: check for conflicts
